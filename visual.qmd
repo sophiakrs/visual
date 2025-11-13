@@ -1,0 +1,1328 @@
+---
+title: "Visual"
+format: html
+editor: visual
+---
+
+# **Minorías masculinas en pedagogía: Un estudio longitudinal de las trayectorias académicas de hombres en Chile (2007–2024)**
+
+::: {style="text-align: justify;"}
+En este documento se presenta una serie de visualizaciones diseñadas para mostrar de forma clara y comprensible algunos de los principales resultados obtenidos a lo largo de este estudio. El objetivo es ofrecer una manera sencilla y visual de explorar los datos, permitiendo identificar patrones, tendencias y relaciones que pueden resultar menos evidentes en los análisis puramente numéricos o descriptivos. A través de gráficos, diagramas y otras representaciones visuales, se busca facilitar la interpretación de los hallazgos, apoyar la discusión de los resultados y contribuir a una comprensión más profunda de la información analizada. De esta manera, el documento pretende servir como una herramienta complementaria que enriquezca la lectura del estudio y promueva una comunicación más efectiva de sus conclusiones.
+:::
+
+## **Base 1 DEMRE** 
+
+```{r}
+#| include: false
+#Codigos de bases 
+
+##librerias
+
+pacman::p_load(dplyr, summarytools, sjPlot, readr, purrr, sjmisc, ggplot2, 
+               networkD3, tidyr, ggalluvial, highcharter, htmlwidgets, 
+               survey, calidad, DT, zoo, glue, forcats, haven, car, corrplot, 
+               stargazer, lme4, gt, tibble, janitor, psych, tidyverse, survival,
+               survminer, knitr, kableExtra, naniar, corrr, lattice, forcats,
+               networkD3, htmlwidgets, scales, modelsummary)
+
+##base de datos demre
+
+base_matriculado_corta <- read_delim("https://raw.githubusercontent.com/sophkar/tesis/main/base_matriculado_corta.csv",delim = ",")
+
+base_panel_enriquecida_final_r <- read_delim("https://raw.githubusercontent.com/sophkar/tesis/main/base_panel_enriquecida_final_r.csv",delim = ",")
+
+```
+
+```{r}
+#| include: false
+#### Paleta personalizada
+colores_matricula <- c("Sí" = "#698B69", "No" = "#CD3333")
+
+colores_preferencias <- c("1° preferencia" = "#63B8FF",
+                          "2° preferencia" = "#5CACEE",
+                          "3° preferencia" = "#4594CD",    
+                          "4°-5° preferencia" = "#4682B4",
+                          "6° o más" = "#36648B")
+
+###codigos
+
+####saco proporciones por genero y por matricula, la idea es ver las diferencias
+####frecuencia no me sirve porque hombres son muy muy pocos
+
+proporciones <- base_matriculado_corta %>%
+  group_by(SEXO, matriculado) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(SEXO) %>%
+  mutate(proporcion = n / sum(n) * 100)
+
+proporciones <- proporciones %>%
+  mutate(matriculado = ifelse(matriculado == TRUE, "Sí", "No"))
+```
+
+### Figura 1 
+
+```{r}
+#| echo: false
+ggplot(proporciones, aes(x = SEXO, y = proporcion, fill = matriculado)) +
+  geom_col(position = "stack") +
+  labs(
+    title = "Proporción de Matriculados y No Matriculados por Género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "¿Matriculado?"
+  ) +
+  scale_fill_manual(values = colores_matricula) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme_minimal()
+```
+
+```{r}
+#| include: false
+####quiero ver factor tiempo, saco tasa de matricula hombres y mujeres
+####annado promedio para que se note que los hombres tienen peor matricula
+
+tasas_por_sexo <- base_matriculado_corta %>% group_by(anno, SEXO) %>%
+  summarise(tasa = mean(matriculado) * 100, .groups = "drop")
+
+tasas_promedio <- tasas_por_sexo %>% group_by(anno) %>%
+  summarise(SEXO = "Promedio", tasa = mean(tasa), .groups = "drop")
+
+tasas_todas <- bind_rows(tasas_por_sexo, tasas_promedio) %>%
+  mutate(SEXO = factor(SEXO, levels = c("Hombre", "Mujer", "Promedio")))
+```
+
+### Gráfico 1
+
+```{r}
+#| echo: false
+#| warning: false
+ggplot(tasas_todas, aes(x = anno, y = tasa, color = SEXO, linetype = SEXO)) +
+  geom_line(size = 1) + geom_point() +
+  geom_text(aes(label = round(tasa, 1)), vjust = -0.5, size = 3.5) +
+  scale_color_manual(
+    values = c(
+      "Hombre" = "#6E7B8B",
+      "Mujer" = "#B0C4DE",
+      "Promedio" = "#CDCDC1")) +
+  scale_linetype_manual(
+    values = c(
+      "Hombre" = "solid",
+      "Mujer" = "solid",
+      "Promedio" = "dashed")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  labs(title = "Tasa de matrícula por cohorte y género",
+       x = "Cohorte",
+       y = "Tasa de matrícula (%)",
+       color = "Género",
+       linetype = "Género") +
+  theme_minimal(base_size = 13)
+```
+
+### Tabla 1
+
+Cantidad de rendiciones que realizan los postulantes separado por género
+
+```{r}
+#| echo: false
+
+tabla_rendiciones <- base_matriculado_corta %>%
+  group_by(SEXO) %>%
+  summarise(
+    promedio_rendiciones = mean(rendiciones, na.rm = TRUE),
+    desviacion_rendiciones = sd(rendiciones, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rename(Género = SEXO)
+
+tabla_rendiciones
+```
+
+### Figura 2
+
+```{r}
+#| include: false
+####quiero ver ahora las preferencias de aquellos que ingresan
+####uso otra base para esto
+
+base_panel_enriquecida_final_r <- base_panel_enriquecida_final_r %>%
+  mutate(PREFERENCIA_RANGO = case_when(
+    is.na(PREFERENCIA) ~ NA_character_,
+    PREFERENCIA == 1 ~ "1° preferencia",
+    PREFERENCIA == 2 ~ "2° preferencia",
+    PREFERENCIA == 3 ~ "3° preferencia",
+    PREFERENCIA %in% 4:5 ~ "4°-5° preferencia",
+    PREFERENCIA > 6 ~ "6° o más",
+    TRUE ~ NA_character_)) %>%
+  filter(!is.na(PREFERENCIA_RANGO))
+
+matriculados <- base_panel_enriquecida_final_r %>%
+  filter(matriculado == TRUE)
+
+tabla_preferencias <- matriculados %>%
+  count(PREFERENCIA_RANGO) %>%
+  mutate(prop = round(n / sum(n) * 100, 1))
+
+tabla_preferencias_sin_na <- tabla_preferencias %>%
+  filter(!is.na(PREFERENCIA_RANGO))
+```
+
+```{r}
+#| echo: false
+ggplot(tabla_preferencias, aes(x = PREFERENCIA_RANGO, y = prop, fill = PREFERENCIA_RANGO)) +
+  geom_col() +
+  geom_text(aes(label = paste0(prop, "%")), vjust = -0.5, size = 4) +
+  scale_fill_manual(values = colores_preferencias) +
+  labs(
+    title = "Distribución de preferencia en matriculados",
+    x = "Rango de preferencia",
+    y = "Proporción (%)",
+    fill = "Preferencia"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+### Figura 3
+
+```{r}
+#| echo: false
+####aca apilado y separado por genero
+
+tabla_prop <- base_panel_enriquecida_final_r %>%
+  group_by(SEXO, PREFERENCIA_RANGO) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(SEXO) %>%
+  mutate(prop = n / sum(n) * 100) %>%
+  # Aquí agregamos las etiquetas
+  mutate(SEXO = factor(SEXO,
+                       levels = c(1, 2),
+                       labels = c("Hombres", "Mujeres")))
+
+
+##### Gráfico proporcional apilado (barra 100%)
+ggplot(tabla_prop, aes(x = SEXO, y = prop, fill = PREFERENCIA_RANGO)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = paste0(round(prop, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            size = 3.5) +
+  scale_fill_brewer(palette = "Blues") +
+  labs(
+    title = "Distribución proporcional de preferencia por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Rango de preferencia"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 4 
+
+```{r}
+#| echo: false
+####Rama tecnico vs humanista/cientifico
+
+tabla_rama_sexo <- base_matriculado_corta %>%
+  filter(!is.na(rama), !is.na(SEXO)) %>%
+  group_by(SEXO, rama) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(SEXO) %>%
+  mutate(prop = n / sum(n) * 100)
+
+ggplot(tabla_rama_sexo, aes(x = SEXO, y = prop, fill = rama)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = paste0(round(prop, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            size = 4) +
+  scale_fill_manual(values = c("H" = "#B0C4DE", "T" = "#6E7B8B")) +
+  labs(
+    title = "Distribución proporcional de ramas por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Rama"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 5
+
+```{r}
+#| echo: false
+####lo mismo pero para ver si hay diferencia entre no matriculado y matriculado
+
+tabla_rama_sexo_mat <- base_matriculado_corta %>%
+  filter(!is.na(rama), !is.na(SEXO), !is.na(matriculado)) %>%
+  group_by(SEXO, matriculado, rama) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(SEXO, matriculado) %>%
+  mutate(prop = n / sum(n) * 100)
+
+ggplot(tabla_rama_sexo_mat, aes(x = SEXO, y = prop, fill = rama)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = paste0(round(prop, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            size = 3.5) +
+  facet_wrap(~ matriculado, labeller = labeller(matriculado = c("TRUE" = "Matriculado", "FALSE" = "No matriculado"))) +
+  scale_fill_manual(values = c("H" = "#B0C4DE", "T" = "#6E7B8B")) +
+  labs(
+    title = "Distribución proporcional de ramas por género y matrícula",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Rama"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 6
+
+```{r}
+#| echo: false
+####Ver dependencias de donde vienen pero por municipal, particular pagado, particular subvencionado
+
+tabla_dependencia <- base_matriculado_corta %>%
+  filter(!is.na(matriculado), !is.na(SEXO)) %>%
+  group_by(SEXO, matriculado, dependencia_label) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(SEXO, matriculado) %>%
+  mutate(prop = n / sum(n) * 100)
+
+ggplot(tabla_dependencia, aes(x = SEXO, y = prop, fill = dependencia_label)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = paste0(round(prop, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            size = 3.5) +
+  facet_wrap(~ matriculado, labeller = labeller(matriculado = c("TRUE" = "Matriculado", "FALSE" = "No matriculado"))) +
+  scale_fill_manual(values = c(
+    "Municipal" = "#6E7B8B",
+    "Particular subvencionado" = "#B0C4DE",
+    "Particular pagado" = "#EEE8AA"
+  )) +
+  labs(
+    title = "Distribución Tipo de dependencia, género y matrícula",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Dependencia"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+## Base 2 MINEDUC educación superior
+
+```{r}
+#| include: false
+##base de datos abierta 1/2
+
+base_unica <- read_delim("https://raw.githubusercontent.com/sophkar/tesis/main/base_unica.csv",delim = ",")
+base_propu_trayec_r <- read_delim("https://raw.githubusercontent.com/sophkar/tesis/main/base_propu_trayec_r.csv",delim = ",")
+base_para_modelo <- read_delim("https://raw.githubusercontent.com/sophkar/tesis/main/base_para_modelo.csv",delim = ",")
+base_trayectorias_SC_r <- read_delim("https://raw.githubusercontent.com/sophkar/tesis/main/base_trayectorias_SC_r.csv",delim = ",")
+
+###codigos
+
+#### Paleta personalizada
+
+colores_egreso <- c("Sí" = "#698B69", "No" = "#CD3333")
+
+```
+
+```{r}
+#| include: false
+####ver duracion de los estudios
+
+duracion_promedio_categoria <- base_propu_trayec_r %>% group_by(categoria_peda) %>%
+  summarise(promedio_duracion = mean(dur_estudio_carr, na.rm = TRUE))
+
+####calcular duración individual (por cantidad de años con presencia en la carrera)
+
+duracion_individual <- base_propu_trayec_r %>%
+  filter(!is.na(cat_periodo)) %>%  # asegurarse que anno exista
+  group_by(mrun) %>%
+  summarise(
+    duracion_carrera = n_distinct(cat_periodo),
+    sexo = first(gen_alu),   
+    egresado = first(egresa),
+    categoria_peda = first(categoria_peda))
+
+duracion_genero_categoria <- duracion_individual %>%
+  group_by(sexo, categoria_peda) %>%
+  summarise(
+    promedio_anios = mean(duracion_carrera, na.rm = TRUE),
+    mediana_anios = median(duracion_carrera, na.rm = TRUE),
+    n = n())
+
+duracion_genero_egreso_categoria <- duracion_individual %>%
+  group_by(sexo, egresado, categoria_peda) %>%
+  summarise(
+    promedio_anios = mean(duracion_carrera, na.rm = TRUE),
+    mediana_anios = median(duracion_carrera, na.rm = TRUE),
+    n = n())
+
+duracion_individual <- base_propu_trayec_r %>%
+  filter(!is.na(cat_periodo)) %>%
+  group_by(mrun) %>%
+  summarise(
+    duracion_carrera = n_distinct(cat_periodo),
+    sexo = first(gen_alu),
+    egresado = first(egresa),
+    categoria_peda = first(categoria_peda)
+  ) %>%
+  mutate(
+    egresado = ifelse(egresado == 1, "Egresó", "No egresó"),
+    sexo = ifelse(sexo == 1, "Hombre", "Mujer"))
+```
+
+### Figura 7
+
+```{r}
+#| echo: false
+####Proporcion de egreso por carrera y genero
+
+proporciones_egreso <- base_propu_trayec_r %>%
+  mutate(
+    sexo = case_when(
+      gen_alu == 1 ~ "Hombre",
+      gen_alu == 2 ~ "Mujer"
+    ),
+    egresa = ifelse(egresa == 1, "Sí", "No"),
+    categoria_peda = factor(categoria_peda, levels = c(1, 2, 3),
+                            labels = c("Parvularia", "Básica", "Mixta"))
+  ) %>%
+  group_by(sexo, categoria_peda, egresa) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(sexo, categoria_peda) %>%
+  mutate(proporcion = n / sum(n) * 100)
+
+ggplot(proporciones_egreso, aes(x = categoria_peda, y = proporcion, fill = egresa)) +
+  geom_col(position = "stack") +
+  facet_wrap(~ sexo) +
+  labs(
+    title = "Proporción de egreso por carrera y género",
+    x = "Categoría Pedagógica",
+    y = "Proporción (%)",
+    fill = "¿Egresó?"
+  ) +
+  scale_fill_manual(values = colores_egreso) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 8
+
+```{r}
+#| include: false
+####ver base
+
+glimpse(base_trayectorias_SC_r)
+summary(base_trayectorias_SC_r)
+
+base_trayectorias_SC_ultimo_dato <- base_trayectorias_SC_r %>%
+  group_by(mrun) %>%
+  filter(cat_periodo == max(cat_periodo, na.rm = TRUE)) %>%
+  ungroup()
+
+tabla_frecuencias <- table(base_trayectorias_SC_r$gen_alu, base_trayectorias_SC_r$categoria_peda)
+
+prop_fila <- prop.table(tabla_frecuencias, margin = 1)
+round(prop_fila, 3)
+
+prop_total <- prop.table(tabla_frecuencias)
+round(prop_total, 3)
+
+####Proporcion de egreso por carrera y genero
+
+proporciones_egreso <- base_propu_trayec_r %>%
+  mutate(
+    sexo = case_when(
+      gen_alu == 1 ~ "Hombre",
+      gen_alu == 2 ~ "Mujer"
+    ),
+    egresa = ifelse(egresa == 1, "Sí", "No"),
+    categoria_peda = factor(categoria_peda, levels = c(1, 2, 3),
+                            labels = c("Parvularia", "Básica", "Mixta"))
+  ) %>%
+  group_by(sexo, categoria_peda, egresa) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(sexo, categoria_peda) %>%
+  mutate(proporcion = n / sum(n) * 100)
+
+ggplot(proporciones_egreso, aes(x = categoria_peda, y = proporcion, fill = egresa)) +
+  geom_col(position = "stack") +
+  facet_wrap(~ sexo) +
+  labs(
+    title = "Proporción de egreso por carrera y género",
+    x = "Categoría Pedagógica",
+    y = "Proporción (%)",
+    fill = "¿Egresó?"
+  ) +
+  scale_fill_manual(values = colores_egreso) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme_minimal(base_size = 13)
+```
+
+```{r}
+#| echo: false
+####evolucion por anno
+
+tasas_por_egreso <- base_trayectorias_SC_ultimo_dato %>%
+  mutate(
+    SEXO = case_when(
+      gen_alu == 1 ~ "Hombre",
+      gen_alu == 2 ~ "Mujer"
+    )
+  ) %>%
+  group_by(cat_periodo, SEXO) %>%
+  summarise(tasa = mean(egresa, na.rm = TRUE) * 100, .groups = "drop")
+
+##### Promedio general por año
+tasas_promedio <- tasas_por_egreso %>%
+  group_by(cat_periodo) %>%
+  summarise(SEXO = "Promedio", tasa = mean(tasa), .groups = "drop")
+
+##### Unir
+tasas_todas <- bind_rows(tasas_por_egreso, tasas_promedio) %>%
+  mutate(SEXO = factor(SEXO, levels = c("Hombre", "Mujer", "Promedio")))
+
+tasas_todas_filtradas <- tasas_todas %>%
+  filter(cat_periodo <= 2022)
+
+##### Gráfico veste no lo reporto
+ggplot(tasas_todas_filtradas, aes(x = cat_periodo, y = tasa, color = SEXO, linetype = SEXO)) +
+  geom_line(size = 1) +
+  geom_point() +
+  geom_text(aes(label = round(tasa, 1)), vjust = -0.5, size = 3.5) +
+  scale_color_manual(
+    values = c(
+      "Hombre" = "#6E7B8B",
+      "Mujer" = "#B0C4DE",
+      "Promedio" = "#CDCDC1"
+    )
+  ) +
+  scale_linetype_manual(
+    values = c(
+      "Hombre" = "solid",
+      "Mujer" = "solid",
+      "Promedio" = "dashed"
+    )
+  ) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  labs(
+    title = "Tasa de egreso observada por año y sexo",
+    x = "Año observado (último año por persona)",
+    y = "Tasa de egreso (%)",
+    color = "Sexo",
+    linetype = "Sexo"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 9
+
+```{r}
+#| echo: false
+####proporciones instituciones
+
+base_propu_trayec_r <- base_propu_trayec_r %>%
+  filter(tipo_inst_3 != "Universidades (* Carrera en Convenio)") %>%
+  mutate(
+    tipo_inst_recod = case_when(
+      tipo_inst_3 %in% c("Universidades Privadas", "Universidades Privadas CRUCH") ~ "Universidad privada",
+      tipo_inst_3 == "Universidades Estatales CRUCH" ~ "Universidad estatal",
+      tipo_inst_3 == "Institutos Profesionales" ~ "Instituto profesional",
+      TRUE ~ NA_character_
+    ),
+    tipo_inst_recod = factor(tipo_inst_recod, levels = c("Universidad estatal", "Universidad privada", "Instituto profesional"))
+  )
+
+proporciones_inst <- base_propu_trayec_r %>%
+  filter(!is.na(tipo_inst_recod)) %>%
+  group_by(cat_periodo, tipo_inst_recod) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cat_periodo) %>%
+  mutate(proporcion = n / sum(n))
+
+ggplot(proporciones_inst, aes(x = cat_periodo, y = proporcion, fill = tipo_inst_recod)) +
+  geom_area(color = "white") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(
+    values = c(
+      "Universidad estatal" = "#6E7B8B",
+      "Universidad privada" = "#B0C4DE",
+      "Instituto profesional" = "#CDCDC1"
+    )
+  ) +
+  labs(
+    title = "Evolución proporcional de matrícula por tipo de institución",
+    x = "Año",
+    y = "Proporción del total",
+    fill = "Tipo de institución"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 10
+
+```{r}
+#| echo: false
+proporciones_inst_genero <- base_propu_trayec_r %>%
+  filter(!is.na(tipo_inst_recod), gen_alu %in% c(1, 2)) %>%
+  mutate(
+    sexo = case_when(
+      gen_alu == 1 ~ "Hombre",
+      gen_alu == 2 ~ "Mujer"
+    )
+  ) %>%
+  group_by(cat_periodo, tipo_inst_recod, sexo) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cat_periodo, sexo) %>%
+  mutate(proporcion = n / sum(n))
+
+#####grafico comparativo entre hombres y mujeres segun institucion
+ggplot(proporciones_inst_genero, aes(x = cat_periodo, y = proporcion, fill = tipo_inst_recod)) +
+  geom_area(color = "white") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(
+    values = c(
+      "Universidad estatal" = "#6E7B8B",
+      "Universidad privada" = "#B0C4DE",
+      "Instituto profesional" = "#CDCDC1"
+    )
+  ) +
+  labs(
+    title = "Evolución de matrícula por institución y género",
+    x = "Año",
+    y = "Proporción del total",
+    fill = "Tipo de institución"
+  ) +
+  facet_wrap(~ sexo) +
+  theme_minimal(base_size = 13)
+```
+
+## Base 2 MINEDUC docentes
+
+```{r}
+#| include: false
+##base de datos abierta 2/2
+
+docente_fil_r <- read_delim("https://raw.githubusercontent.com/sophkar/tesis/main/docente_fil_r.csv",delim = ",")
+
+#### Paleta personalizada
+
+colores_syn <- c("Sí" = "#698B69", "No" = "#CD3333")
+
+colores_preferencias <- c(
+  "1–19"   = "#63B8FF",
+  "20–29"   = "#5CACEE",
+  "30–39"   = "#4594CD",
+  "40–45"= "#4682B4",
+  "46+"         = "#36648B")
+
+colores_rur <- c("Urbano" = "#CD3333", "Rural" = "#698B69")
+
+colores_genero <- c("Hombre" = "#6E7B8B", "Mujer" = "#B0C4DE")
+
+###codigos
+```
+
+```{r}
+#| include: false
+####1.generar jerarquía - generar ascenso ¿vale la pena reportar?
+
+docente_fil_r <- docente_fil_r %>% mutate(docente_aula = ifelse(ID_IFP %in% c(1, 17), 1, 0))
+frq(docente_fil_r$docente_aula)
+
+docente_fil_r <- docente_fil_r %>% mutate(directivo = ifelse(ID_IFP %in% c(4, 16), 1, 0))
+
+tabla_dir_genero <- docente_fil_r %>%
+  group_by(genero_lbl, directivo_lbl) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(
+    prop_dentro_genero = round(100 * n / sum(n), 1)  # proporción en %
+  ) %>%
+  ungroup()
+
+tabla_dir_genero
+
+docente_fil_r <- docente_fil_r %>%
+  arrange(mrun, RBD) %>%
+  group_by(mrun, RBD) %>%
+  mutate(
+    ascenso = ifelse(!is.na(lag(docente_aula)) & lag(docente_aula == 1) & directivo == 1, 1, 0)
+  ) %>%
+  ungroup()
+
+frq(docente_fil_r$ascenso)
+
+docente_fil_r <- docente_fil_r %>% mutate(genero_lbl = factor(DOC_GENERO,
+                                                          levels = c(1, 2),
+                                                          labels = c("Hombre", "Mujer")),
+                                      ascenso_lbl = factor(ascenso,
+                                                           levels = c(0, 1),
+                                                           labels = c("No", "Sí")))
+
+proporciones_ascenso <- docente_fil_r %>%
+  filter(!is.na(genero_lbl), !is.na(ascenso_lbl)) %>%
+  group_by(genero_lbl, ascenso_lbl) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(proporcion = n / sum(n)) %>%
+  ungroup()
+
+ggplot(proporciones_ascenso,
+       aes(x = genero_lbl, y = proporcion, fill = ascenso_lbl)) +
+  geom_col(position = "stack") +
+  labs(
+    title = "Proporción de ascenso por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "¿Ascenso?"
+  ) +
+  scale_fill_manual(values = colores_syn) +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  theme_minimal(base_size = 13)    
+
+docente_fil_r <- docente_fil_r %>%
+  arrange(mrun, RBD, AGNO) %>%
+  group_by(mrun, RBD) %>%
+  mutate(
+    # contador acumulado de años "docente_aula==1" hasta el año anterior
+    docente_acum_prev = lag(cumsum(docente_aula == 1), default = 0L),
+    
+    # tiempo hasta el ascenso: SOLO se informa en el año donde ascenso==1
+    tiempo_ascenso_doc = ifelse(ascenso == 1, docente_acum_prev, NA_integer_)
+  ) %>%
+  ungroup()
+
+ascenso_tiempos <- docente_fil_r %>%
+  filter(ascenso == 1, !is.na(tiempo_ascenso_doc)) %>%
+  group_by(DOC_GENERO) %>%
+  summarise(
+    n = n(),
+    promedio_anios = mean(tiempo_ascenso_doc, na.rm = TRUE),
+    mediana_anios  = median(tiempo_ascenso_doc, na.rm = TRUE),
+    minimo_anios   = min(tiempo_ascenso_doc, na.rm = TRUE),
+    maximo_anios   = max(tiempo_ascenso_doc, na.rm = TRUE))
+
+ascenso_tiempos
+
+ascenso_tiempos <- docente_fil_r %>%
+  filter(ascenso == 1, !is.na(tiempo_ascenso_doc)) %>%
+  mutate(
+    genero_lbl = factor(DOC_GENERO, levels = c(1,2),
+                        labels = c("Hombre", "Mujer")),
+    anios_asc = tiempo_ascenso_doc)
+
+proporciones_asc <- ascenso_tiempos %>%
+  group_by(genero_lbl, anios_asc) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(prop = n / sum(n))
+
+##### Gráfico en proporciones
+ggplot(proporciones_asc, aes(x = genero_lbl, y = prop, fill = factor(anios_asc))) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = scales::percent(prop, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5), size = 3, color = "black") +
+  labs(
+    title = "Tiempo hasta ascenso por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Años hasta ascender"
+  ) +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 11
+
+```{r}
+#| include: false
+###2.comprobar diferencias en horas hvsm 
+
+tabla_horas_genero <- docente_fil_r %>%
+  filter(!is.na(horas_grupo_), !is.na(DOC_GENERO)) %>%
+  count(DOC_GENERO, horas_grupo_, name = "n") %>%
+  group_by(DOC_GENERO) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup()
+
+ggplot(tabla_horas_genero,
+       aes(x = DOC_GENERO, y = prop, fill = horas_grupo_)) +
+  geom_col(position = "fill") +
+  geom_text(aes(label = percent(prop, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            size = 3, color = "black") +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  scale_fill_manual(values = colores_preferencias) +
+  labs(
+    title = "Distribución de horas de contrato por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Grupo de horas"
+  ) +
+  theme_minimal(base_size = 13)
+
+base_filtrada <- docente_fil_r %>%
+  filter(!is.na(horas_grupo_),
+         horas_grupo_ != 0)
+
+```
+
+```{r}
+#| echo: false
+ggplot(tabla_horas_genero,
+       aes(x = DOC_GENERO, y = prop, fill = horas_grupo_)) +
+  geom_col(position = "fill") +
+  geom_text(aes(label = percent(prop, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            size = 3, color = "black") +
+  scale_x_continuous(breaks = c(1, 2), labels = c("Hombre", "Mujer")) +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  scale_fill_manual(values = colores_preferencias) +
+  labs(
+    title = "Distribución de horas de contrato por género",
+    x = "Género", y = "Proporción (%)", fill = "Grupo de horas"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### figura 12
+
+```{r}
+#| echo: false
+###5.comprobar ruralidad hvsm 
+
+tabla_rural_genero <- docente_fil_r %>%
+  filter(!is.na(RURAL_RBD), !is.na(DOC_GENERO)) %>%
+  group_by(DOC_GENERO, RURAL_RBD) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(prop_dentro_genero = n / sum(n))
+
+#### Tabla: ruralidad dentro de cada género
+tabla_rural_genero <- docente_fil_r %>%
+  filter(!is.na(RURAL_RBD), !is.na(DOC_GENERO)) %>%
+  group_by(DOC_GENERO, RURAL_RBD) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(
+    prop_dentro_genero = n / sum(n),
+    rural_lbl = factor(RURAL_RBD, levels = c(0,1), labels = c("Urbano","Rural")),
+    genero_lbl = factor(DOC_GENERO, levels = c(1,2), labels = c("Hombre","Mujer"))
+  )
+
+
+ggplot(tabla_rural_genero,
+       aes(x = genero_lbl, y = prop_dentro_genero, fill = rural_lbl)) +
+  geom_col(position = "fill") +
+  geom_text(aes(label = percent(prop_dentro_genero, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            size = 3, color = "black") +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  scale_fill_manual(values = colores_rur) +
+  labs(
+    title = "Proporción de ruralidad dentro de cada género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Tipo de establecimiento"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### figura 13
+
+```{r}
+#| echo: false
+###6.ver tipos de establecimientos hvsm 
+
+docente_fil_r <- docente_fil_r %>%
+  mutate(
+    dependencia = case_when(
+      COD_DEPE %in% c(1, 2, 5, 6) ~ "Municipal",
+      COD_DEPE == 3 ~ "Particular Subvencionado",
+      COD_DEPE == 4 ~ "Particular Pagado",
+      TRUE ~ NA_character_
+    ),
+    dependencia = factor(
+      dependencia,
+      levels = c("Municipal", "Particular Subvencionado", "Particular Pagado")))
+
+tabla_dep_genero <- docente_fil_r %>%
+  filter(!is.na(DOC_GENERO), !is.na(dependencia)) %>%
+  group_by(DOC_GENERO, dependencia) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(prop = n / sum(n))
+
+ggplot(tabla_dep_genero,
+       aes(x = factor(DOC_GENERO, levels = c(1,2), labels = c("Hombre","Mujer")),
+           y = prop,
+           fill = dependencia)) +
+  geom_col(position = "fill") +
+  geom_text(aes(label = percent(prop, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            size = 3, color = "black") +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  scale_fill_manual(values = c(
+    "Municipal" = "#6E7B8B",
+    "Particular Subvencionado" = "#B0C4DE",
+    "Particular Pagado" = "#CDCDC1"
+  )) +
+  labs(
+    title = "Distribución dependencia por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Dependencia"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### Figura 14
+
+```{r}
+#| echo: false
+###7.ver abandono - noveles - rotacion
+
+docente_fil_r <- docente_fil_r %>%
+  mutate(
+    anio_nac = as.integer(substr(DOC_FEC_NAC, 1, 4)),
+    edad = AGNO - anio_nac)
+
+docente_fil_r <- docente_fil_r %>%
+  arrange(mrun, AGNO) %>%
+  group_by(mrun) %>%
+  mutate(
+    # diferencia con el año anterior
+    gap = AGNO - lag(AGNO),
+    
+    # edad en el año previo (para evaluar la condición de jubilación)
+    edad_prev = lag(edad),
+    genero_prev = lag(DOC_GENERO),
+    
+    # abandono si hay 5+ años de ausencia entre apariciones
+    abandono_interno = case_when(
+      genero_prev == 2 & edad_prev < 60 & gap >= 5 ~ 1,   # mujer
+      genero_prev == 1 & edad_prev < 65 & gap >= 5 ~ 1,   # hombre
+      TRUE ~ 0
+    )
+  ) %>%
+  ungroup()
+
+abandono_final <- docente_fil_r %>%
+  group_by(mrun) %>%
+  summarise(
+    ultimo_agno = max(AGNO, na.rm = TRUE),
+    genero = last(DOC_GENERO),
+    edad_ultimo = last(edad)
+  ) %>%
+  mutate(
+    abandono_tope = case_when(
+      genero == 2 & edad_ultimo < 60 & (2024 - ultimo_agno) >= 5 ~ 1,
+      genero == 1 & edad_ultimo < 65 & (2024 - ultimo_agno) >= 5 ~ 1,
+      TRUE ~ 0))
+
+docente_fil_r<- docente_fil_r %>%
+  arrange(mrun, AGNO) %>%
+  group_by(mrun) %>%
+  mutate(
+    anio_nac = as.integer(substr(DOC_FEC_NAC, 1, 4)),
+    edad     = AGNO - anio_nac,
+    
+    # --- Abandono por brecha interna (cuando reaparece tras ≥5 años) ---
+    gap       = AGNO - lag(AGNO),
+    edad_prev = lag(edad),
+    gen_prev  = lag(DOC_GENERO),
+    abandono_interno = as.integer(
+      (!is.na(gap) & gap >= 5) &
+        (
+          (gen_prev == 2 & !is.na(edad_prev) & edad_prev < 60) |   # mujer
+            (gen_prev == 1 & !is.na(edad_prev) & edad_prev < 65)     # hombre
+        )
+    ),
+    
+    # --- Extensión al tope 2024 (si NO vuelve) ---
+    ultimo_agno   = max(AGNO, na.rm = TRUE),
+    # tomar género y edad del último año observado (sin joins)
+    edad_ultimo   = { idx <- match(ultimo_agno, AGNO); edad[idx[1]] },
+    genero_ultimo = { idx <- match(ultimo_agno, AGNO); DOC_GENERO[idx[1]] },
+    
+    abandono_tope = as.integer(
+      (2024 - ultimo_agno) >= 5 &
+        (
+          (genero_ultimo == 2 & !is.na(edad_ultimo) & edad_ultimo < 60) |  # mujer
+            (genero_ultimo == 1 & !is.na(edad_ultimo) & edad_ultimo < 65)    # hombre
+        )
+    ),
+    
+    # >>> Re-codificación final de *la misma* variable
+    abandono_interno = pmax(abandono_interno, abandono_tope)
+  ) %>%
+  ungroup()
+
+tabla_abandono_genero <- docente_fil_r%>%
+  filter(!is.na(DOC_GENERO), !is.na(abandono_interno)) %>%
+  group_by(DOC_GENERO, abandono_interno) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup()
+
+ggplot(
+  tabla_abandono_genero,
+  aes(
+    x = factor(DOC_GENERO, levels = c(1, 2), labels = c("Hombre", "Mujer")),
+    y = prop,
+    fill = factor(abandono_interno, levels = c(0, 1), labels = c("No", "Sí"))
+  )
+) +
+  geom_col(position = "fill") +
+  geom_text(
+    aes(label = percent(prop, accuracy = 0.1)),
+    position = position_stack(vjust = 0.5),
+    size = 3, color = "black"
+  ) +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  scale_fill_manual(values = colores_syn) +
+  labs(
+    title = "Abandono por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Abandono"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+```{r}
+#| include: false
+###8.noveles
+
+titulos_por_mrun <- base_propu_trayec_r %>%
+  mutate(cat_periodo = as.integer(cat_periodo)) %>%         # por si viene como carácter
+  group_by(mrun) %>%
+  summarise(anio_titulacion = max(cat_periodo, na.rm = TRUE),
+            .groups = "drop")
+
+docente_fil_r<- docente_fil_r%>%
+  left_join(titulos_por_mrun, by = "mrun")
+
+docente_fil_r<- docente_fil_r%>%
+  group_by(mrun) %>%
+  mutate(anio_ingreso_lab = suppressWarnings(min(AGNO, na.rm = TRUE))) %>%
+  ungroup()
+
+docente_fil_r<- docente_fil_r%>%
+  mutate(
+    novel = as.integer(!is.na(anio_titulacion) & anio_ingreso_lab == anio_titulacion))
+
+tabla_noveles_genero <- docente_fil_r%>%
+  filter(!is.na(DOC_GENERO), !is.na(novel)) %>%            # noveles debe ser 0/1
+  group_by(genero = factor(DOC_GENERO, levels = c(1, 2),
+                           labels = c("Hombre", "Mujer")),
+           novel) %>%
+  summarise(N = n(), .groups = "drop_last") %>%
+  group_by(genero) %>%
+  mutate(prop = N / sum(N),
+         prop_pct = percent(prop, accuracy = 0.1),
+         novel_lbl = factor(novel, levels = c(1, 0),
+                            labels = c("Sí", "No"))) %>%
+  ungroup()
+
+##### ver tabla
+tabla_noveles_genero
+
+ggplot(tabla_noveles_genero,
+       aes(x = genero, y = prop, fill = novel_lbl)) +
+  geom_col() +  # usamos prop ya calculada
+  geom_text(aes(label = prop_pct),
+            position = position_stack(vjust = 0.5),
+            size = 3, color = "black") +
+  scale_y_continuous(labels = percent_format(scale = 100)) +
+  scale_fill_manual(values = colores_syn) +
+  labs(
+    title = "Proporción de docentes noveles por género",
+    x = "Género",
+    y = "Proporción (%)",
+    fill = "Novel"
+  ) +
+  theme_minimal(base_size = 13)
+
+docente_fil_r<- docente_fil_r%>%
+  group_by(mrun) %>%
+  mutate(
+    # RBD distintos en los que ha estado la persona (ignorando NA)
+    rbd_unicos = n_distinct(RBD[!is.na(RBD)]),
+    # Rotación simple: cuántos cambios como mínimo implica haber pasado por rbd_unicos
+    rotacion_total = pmax(rbd_unicos - 1L, 0L)
+  ) %>%
+  ungroup()
+
+tabla_resumen <- docente_fil_r%>%
+  distinct(mrun, genero_lbl, rotacion_total) %>%   # 1 fila por persona
+  group_by(genero_lbl) %>%
+  summarise(
+    media_rotacion = mean(rotacion_total, na.rm = TRUE),
+    sd_rotacion    = sd(rotacion_total, na.rm = TRUE),
+    n_personas     = n(),
+    .groups = "drop")
+
+print(tabla_resumen)
+
+base_personas <- docente_fil_r %>%
+  distinct(mrun, DOC_GENERO, rotacion_total) %>%
+  mutate(genero_lbl = factor(DOC_GENERO, levels = c(1, 2),
+                             labels = c("Hombre", "Mujer")))
+
+##### Proporciones DENTRO de cada género
+##### (para hombres: cada proporción se divide por el total de hombres; idem mujeres)
+
+tabla_rotacion_genero <- base_personas %>%
+  group_by(genero_lbl, rotacion_total) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(prop = n / sum(n)) %>%     # <- clave: normaliza por género
+  ungroup()
+
+tabla_rotacion_genero %>%
+  mutate(prop_pct = percent(prop, accuracy = 0.1)) %>%
+  arrange(genero_lbl, rotacion_total)
+
+tabla_rotacion_genero %>% print(n=30)
+
+###9.ver idoneos 
+
+base_unica_simplificada <- base_unica %>%
+  select(mrun, categoria_peda) %>% 
+  distinct(mrun, .keep_all = TRUE)
+
+docente_fil_r <- docente_fil_r %>%
+  left_join(base_unica_simplificada, by = "mrun")
+
+docente_fil_r <- docente_fil_r %>%
+  mutate(
+    ejercicio_area = case_when(
+      docente_aula == 1 & categoria_peda == "Parvularia" & COD_ENS_1 == 10 ~ 1,
+      docente_aula == 1 & categoria_peda == "Basica"     & COD_ENS_1 == 110 ~ 1,
+      docente_aula == 1 & categoria_peda == "Mixta"     & COD_ENS_1 %in% c(10, 110) ~ 1,
+      TRUE ~ 0))
+
+frq(docente_fil_r$ejercicio_area)
+frq(docente_fil_r$categoria_peda)
+
+tabla_ejercicio_genero_cat <- docente_fil_r %>%
+  filter(!is.na(DOC_GENERO),
+         !is.na(categoria_peda),
+         !is.na(ejercicio_area)) %>%
+  mutate(
+    genero_lbl     = factor(DOC_GENERO, levels = c(1, 2),
+                            labels = c("Hombre", "Mujer")),
+    ejercicio_lbl  = factor(ifelse(ejercicio_area == 1, "Sí", "No"),
+                            levels = c("Sí", "No")),
+    categoria_lbl  = factor(categoria_peda,
+                            levels = c("Parvularia", "Basica", "Mixta"))
+  ) %>%
+  group_by(categoria_lbl, genero_lbl, ejercicio_lbl) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  group_by(categoria_lbl, genero_lbl) %>%
+  mutate(prop_dentro_genero = n / sum(n)) %>%
+  ungroup()
+
+```
+
+### Figura 15
+
+```{r}
+#| echo: false
+ggplot(tabla_ejercicio_genero_cat,
+       aes(x = genero_lbl, y = prop_dentro_genero, fill = ejercicio_lbl)) +
+  geom_col(position = "fill") +
+  geom_text(aes(label = percent(prop_dentro_genero, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            size = 3, color = "black") +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  scale_fill_manual(values = colores_syn,
+                    name = "Ejercicio en el área titulada") +
+  labs(
+    title = "Proporción de ejercicio en el área titulada",
+    x = "Género",
+    y = "Proporción dentro del género"
+  ) +
+  facet_wrap(~ categoria_lbl, nrow = 1) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+#| include: false
+####no ejercen
+
+no_ejercen <- docente_fil_r %>%
+  filter(ejercicio_area == 0 & !is.na(COD_ENS_1) & !is.na(ID_IFP))
+
+tabla_destino <- no_ejercen %>%
+  group_by(COD_ENS_1,ID_IFP) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(prop = n / sum(n))
+
+tabla_destino_gen <- no_ejercen %>%
+  mutate(
+    genero_lbl = factor(DOC_GENERO,
+                        levels = c(1,2),
+                        labels = c("Hombre","Mujer"))
+  ) %>%
+  group_by(genero_lbl, COD_ENS_1,ID_IFP) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(genero_lbl) %>%
+  mutate(prop_dentro = n / sum(n))
+
+tabla_destino_gen
+
+####posible sankey
+
+base_sankey1 <- docente_fil_r %>% filter(ejercicio_area == 0)
+
+base_sankey1 <- docente_fil_base_sankey1 <- base_sankey1 %>% select(DOC_GENERO, categoria_peda, ID_IFP, NIVEL1)
+
+base_sankey1 <- base_sankey1 %>%
+  ##### Crear etiquetas nuevas (NO sobreescribir originales)
+  mutate(
+    genero_lbl = case_when(
+      DOC_GENERO == 1 ~ "Hombre",
+      DOC_GENERO == 2 ~ "Mujer",
+      is.na(DOC_GENERO) ~ "Sin dato",
+      TRUE ~ "Otro/NA"
+    ),
+    categoria_lbl = case_when(
+      categoria_peda %in% c("Basica","Básica") ~ "Básica",
+      categoria_peda == "Parvularia"          ~ "Parvularia",
+      categoria_peda == "Mixta"               ~ "Mixta",
+      is.na(categoria_peda)                   ~ "Sin dato",
+      TRUE ~ "Otro/NA"
+    ),
+    ifp_lbl = case_when(
+      ID_IFP %in% c(1,17)         ~ "Docencia aula",
+      ID_IFP %in% c(2,7,11,15)    ~ "Planta Técnico-pedagógica",
+      ID_IFP %in% c(3,10,12,13,14,16) ~ "Planta Directiva",
+      ID_IFP == 4                 ~ "Director(a)",
+      ID_IFP == 8                 ~ "Inspector(a) General",
+      ID_IFP == 9                 ~ "Orientador(a)",
+      is.na(ID_IFP)              ~ "Sin dato",
+      TRUE ~ "Otra/NA"
+    ),
+    nivel1_lbl = case_when(
+      NIVEL1 == 0  ~ "No hace clases",
+      NIVEL1 == 1  ~ "Parvularia",
+      NIVEL1 == 2  ~ "Básica niños/as y jóvenes",
+      NIVEL1 == 6  ~ "Básica adultos",
+      NIVEL1 == 3  ~ "Especial",
+      NIVEL1 == 4  ~ "Media H-C (N/J)",
+      NIVEL1 == 7  ~ "Media H-C (Adultos)",
+      NIVEL1 == 5  ~ "Media TP (N/J)",
+      NIVEL1 == 8  ~ "Media TP (Adultos)",
+      NIVEL1 == 9  ~ "Otro nivel",
+      is.na(NIVEL1) ~ "Sin dato",
+      TRUE ~ "Otra/NA"
+    )
+  ) %>%
+  mutate(
+    genero_lbl    = factor(genero_lbl,    levels = c("Hombre","Mujer","Sin dato","Otro/NA")),
+    categoria_lbl = factor(categoria_lbl, levels = c("Parvularia","Básica","Mixta","Sin dato","Otro/NA")),
+    ifp_lbl       = factor(ifp_lbl,       levels = c("Docencia aula","Planta Técnico-pedagógica","Planta Directiva",
+                                                     "Director(a)","Inspector(a) General","Orientador(a)","Sin dato","Otra/NA")),
+    nivel1_lbl    = factor(nivel1_lbl,    levels = c("No hace clases","Parvularia","Básica niños/as y jóvenes","Básica adultos",
+                                                     "Especial","Media H-C (N/J)","Media H-C (Adultos)",
+                                                     "Media TP (N/J)","Media TP (Adultos)","Otro nivel","Sin dato","Otra/NA"))
+  )
+
+flows2 <- base_sankey1 %>%
+  group_by(genero_lbl, categoria_lbl, ifp_lbl, nivel1_lbl) %>%
+  summarise(n = n(), .groups = "drop")
+
+nodos <- data.frame(name = unique(c(
+  as.character(flows2$genero_lbl),
+  as.character(flows2$categoria_lbl),
+  as.character(flows2$ifp_lbl),
+  as.character(flows2$nivel1_lbl)
+)), stringsAsFactors = FALSE)
+
+idx <- function(x) match(x, nodos$name) - 1
+
+links_g_cat <- flows2 %>%
+  group_by(genero_lbl, categoria_lbl) %>%
+  summarise(value = sum(n), .groups = "drop") %>%
+  transmute(source = idx(genero_lbl), target = idx(categoria_lbl), value)
+
+links_cat_ifp <- flows2 %>%
+  group_by(categoria_lbl, ifp_lbl) %>%
+  summarise(value = sum(n), .groups = "drop") %>%
+  transmute(source = idx(categoria_lbl), target = idx(ifp_lbl), value)
+
+links_ifp_niv <- flows2 %>%
+  group_by(ifp_lbl, nivel1_lbl) %>%
+  summarise(value = sum(n), .groups = "drop") %>%
+  transmute(source = idx(ifp_lbl), target = idx(nivel1_lbl), value)
+
+links <- bind_rows(links_g_cat, links_cat_ifp, links_ifp_niv)
+
+###### Sankey interactivo
+sankeyNetwork(Links = links, Nodes = nodos,
+              Source = "source", Target = "target", Value = "value", NodeID = "name",
+              fontSize = 12, nodeWidth = 24, margin = list(top=10, right=10, bottom=10, left=10))
+
+
+###### Flujos (ya con *_lbl creadas y ejercicio_area == 0)
+flows <- base_sankey1 %>%
+  count(genero_lbl, categoria_lbl, ifp_lbl, nivel1_lbl, name = "value")
+
+###### Nombres únicos por etapa (prefijos)
+flows_uni <- flows %>%
+  transmute(
+    g = paste0("G: ", as.character(genero_lbl)),
+    c = paste0("C: ", as.character(categoria_lbl)),
+    f = paste0("F: ", as.character(ifp_lbl)),
+    n = paste0("N: ", as.character(nivel1_lbl)),
+    value
+  )
+
+###### Tabla de nodos (únicos globales)
+nodes <- data.frame(
+  name = unique(c(flows_uni$g, flows_uni$c, flows_uni$f, flows_uni$n)),
+  stringsAsFactors = FALSE
+)
+
+###### Helper para mapear a índices 0-based
+idx <- function(x) match(x, nodes$name) - 1
+
+###### Enlaces por etapa (G->C, C->F, F->N)
+links_gc <- flows_uni %>%
+  group_by(g, c) %>% summarise(value = sum(value), .groups = "drop") %>%
+  transmute(source = idx(g), target = idx(c), value)
+
+links_cf <- flows_uni %>%
+  group_by(c, f) %>% summarise(value = sum(value), .groups = "drop") %>%
+  transmute(source = idx(c), target = idx(f), value)
+
+links_fn <- flows_uni %>%
+  group_by(f, n) %>% summarise(value = sum(value), .groups = "drop") %>%
+  transmute(source = idx(f), target = idx(n), value)
+
+links <- bind_rows(links_gc, links_cf, links_fn)
+```
+
+### Figura 16
+
+Docentes que no ejercen en sala en el área de titulación
+
+```{r}
+#| echo: false
+###### Sankey (prefijos garantizan unicidad)
+p <- sankeyNetwork(
+  Links = links, Nodes = nodes,
+  Source = "source", Target = "target", Value = "value", NodeID = "name",
+  fontSize = 12, nodeWidth = 28, sinksRight = FALSE
+)
+
+###### (Opcional) Ocultar prefijos en las etiquetas visibles
+p <- onRender(p, '
+  function(el,x){
+    d3.select(el).selectAll(".node text").each(function(){
+      var t = d3.select(this).text();
+      t = t.replace(/^G: /,"").replace(/^C: /,"").replace(/^F: /,"").replace(/^N: /,"");
+      d3.select(this).text(t);
+    });
+  }
+')
+
+p
+
+```
